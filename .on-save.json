@@ -1,0 +1,6 @@
+[
+  {
+    "files": "**/*.js",
+    "command": "babel ${srcFile} --out-file ${destFile}"
+  }
+]
