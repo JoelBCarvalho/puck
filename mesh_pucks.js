@@ -22,17 +22,16 @@ function saveData(filename, txt) {
     file.offset += l;
   }
 }
-console.log(storage.list("blink.js"));
-console.log(storage.read("blink.js"));
-require("blink").go();
+console.log(storage.list());
+console.log(storage.read("blink.min.js"));
 
 //var blink = "exports.go=function(){digitalPulse(LED2, 1, 100);}";
-//saveData("blink.js", blink);
+//saveData("blink.min.js", blink);
 
 /*
 exports.create = function (filename, text) {
   storage.erase(filename);
-  saveData(filename, text);
+  saveData(filename, text); 
   console.log("File overwrited: " + filename);
 };
 

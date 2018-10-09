@@ -1,0 +1,165 @@
+/*
+1-New puck is added.
+2-Scan nearby pucks
+3-Store pucks address and rssi into flash
+4-Send scanning pucks address back to scanned pucks.
+*/
+var scannedDevices = [];
+var alertedDevices = [];
+var problemDevices = [];
+var popedPuck;
+var retring = 0;
+const MAX_RETRIES = 5;
+// Are we busy?
+var busy = false;
+// The device, if we're connected
+var connected = false;
+// The 'tx' characteristic, if connected
+var txCharacteristic = false;
+
+function init() {
+  scannedDevices = [];
+  scanNearby();
+}
+
+function scanNearby() {
+  NRF.findDevices(function (devices) {
+    parseScannedDevices(devices);
+    alertPresence();
+  }, 5000);
+}
+
+function parseScannedDevices(devices) {
+  for (var i = 0; i < devices.length; i++) {
+    if (devices[i].id && devices[i].name && devices[i].rssi) {
+      var scannedDevice = {
+        "address": devices[i].id,
+        "rssi": devices[i].rssi,
+        "name": devices[i].name
+      };
+      scannedDevices.push(scannedDevice);
+    }
+  }
+}
+
+function alertPresence() {
+  if(scannedDevices.length>0) {
+    popedPuck = scannedDevices.pop();
+    console.log("Alerting " + popedPuck.name);
+    sendToggle(popedPuck);
+  }
+}
+
+function sendToggle(puck) {
+  if (!busy) {
+    busy = true;
+    if (!connected) {
+      NRF.requestDevice({ filters: [{ name: puck.name }] }).then(function(device) {
+        return device.gatt.connect();
+      }).then(function(d) {
+        connected = d;
+        return d.getPrimaryService("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
+      }).then(function(s) {
+        return s.getCharacteristic("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
+      }).then(function(c) {
+        txCharacteristic = c;
+        busy = false;
+        // Now actually send the toggle command
+        sendToggle();
+      }).catch(function() {
+        connected=false;
+        digitalPulse(LED1, 1, 500); // light red if we had a problem
+        busy = false;
+        retring++;
+        console.log("Retrying..." + retring);
+        if(retring < MAX_RETRIES){
+          sendToggle(popedPuck);
+        } else {
+          retring = 0;
+          problemDevices.push(popedPuck);
+          alertPresence();
+        }
+        // if (connected) {
+        //   connected.disconnect();
+        // }
+      });
+    } else {
+      writeData();
+    }
+  }
+}
+
+function writeData(){
+  txCharacteristic.writeValue("LED1.reset();\n").then(function() {
+    digitalPulse(LED2, 1, 500); // light green to show it worked
+    busy = false;
+  }).then(function() {
+    connected.disconnect();
+    connected = false;
+  }).then(function() {
+    console.log("Done");
+    alertedDevices.push(popedPuck);
+    alertPresence();
+  }).catch(function() {
+    digitalPulse(LED1, 1, 500); // light red if we had a problem
+    busy = false;
+  });
+
+}
+
+/*
+// Function to call 'toggle' on the other Puck
+function sendToggle(index) {
+  console.log("AA");
+  if (!busy) {
+    console.log("BB");
+    busy = true;
+    if (!connected && scannedDevices[index]) {
+      var puckName = scannedDevices[index].name;
+      console.log("Trying to connect with: " + puckName);
+      NRF.requestDevice({ filters: [{ name: puckName }] }).then(function (device) {
+        return device.gatt.connect();
+      }).then(function (d) {
+        connected = d;
+        return d.getPrimaryService("6e400001-b5a3-f393-e0a9-e50e24dcca9e");
+      }).then(function (s) {
+        return s.getCharacteristic("6e400002-b5a3-f393-e0a9-e50e24dcca9e");
+      }).then(function (c) {
+        console.log("Connection established with: " + puckName);
+        txCharacteristic = c;
+        busy = false;
+        // Now actually send the toggle command
+        sendToggle(index);
+      }).catch(function () {
+        console.log("Connection failled with: " + puckName);
+        connected = false;
+        digitalPulse(LED1, 1, 500); // light red if we had a problem
+        busy = false;
+        if (connected) {
+          console.log("Disconnecting: " + puckName);
+          connected.disconnect();
+        }
+      });
+    } else {
+      console.log("Sending data to: " + puckName);
+      txCharacteristic.writeValue("digitalPulse(LED2, 1, 500)\n").then(function () {
+        console.log("Data ACK: " + puckName);
+        digitalPulse(LED2, 1, 500); // light green to show it worked
+        busy = false;
+      }).catch(function () {
+        console.log("Data NACK: " + puckName);
+        digitalPulse(LED1, 1, 500); // light red if we had a problem
+        busy = false;
+      });
+
+      if (scannedDevices.length - 1 > nextDevice) {
+        nextDevice++;
+        sendToggle(nextDevice);
+      } else {
+        nextDevice = 0;
+      }
+    }
+  }
+}*/
+
+init();
